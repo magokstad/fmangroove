@@ -50,7 +50,7 @@ pub fn make_stream<T>(
     let num_channels = config.channels as usize;
     let err_fn = |err| eprintln!("Error building output sound stream: {}", err);
 
-    app.lock().unwrap().oscillator.sample_rate = config.sample_rate.0 as f32;
+    app.lock().unwrap().set_sample_rates(config.sample_rate.0 as f32);
 
     let stream = device.build_output_stream(
         config,
@@ -72,8 +72,7 @@ fn process_frame<SampleType>(
     SampleType: Sample + FromSample<f32>,
 {
     for frame in output.chunks_mut(num_channels) {
-        // TODO: find cleaner way to handle amplitude
-        let x = app.lock().unwrap().oscillator.tick() / 2f32;
+        let x = app.lock().unwrap().tick_all();
         let value: SampleType = SampleType::from_sample(x);
 
         // copy the same value to all channels
