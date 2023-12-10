@@ -5,7 +5,7 @@ use crate::app::App;
 mod view;
 mod app;
 mod audio;
-mod tui_elements;
+mod instrument;
 
 fn main() -> anyhow::Result<()> {
     let app = Arc::new(Mutex::new(App:: new()));

@@ -5,8 +5,12 @@ use std::time::Duration;
 use crossterm::{ExecutableCommand, cursor, style, Command, QueueableCommand, queue};
 use crossterm::terminal::{Clear, ClearType, self, enable_raw_mode, disable_raw_mode};
 use crossterm::event::{Event, self, KeyCode, KeyModifiers};
-use crate::app::{App, Waveform};
-use crate::tui_elements::{BorderKind, TuiRect};
+use crate::app::{App, Instruction};
+use crate::instrument::oscillator::Waveform;
+use crate::view::tui_elements::{BorderKind, TuiRect, TuiStructure, TuiStructureLink, TuiTiles};
+use crate::view::tui_elements::TuiSplit;
+
+mod tui_elements;
 
 #[derive(Copy, Clone, Eq, PartialEq)]
 enum TuiMode {
@@ -32,8 +36,10 @@ impl TuiViewModel {
         }
     }
 
-    fn change_waveform(&self, waveform: Waveform) {
-        self.app.lock().unwrap().change_waveform(0, waveform);
+    fn test_apply_instruction(&mut self, i: usize, instruction: Instruction) {
+        if let Some(instrument) = self.app.lock().unwrap().instruments.get_mut(i) {
+            instrument.apply_instruction(instruction)
+        }
     }
 }
 
@@ -41,20 +47,39 @@ impl TuiViewModel {
 pub fn tui(app: Arc<Mutex<App>>) -> Result<()> {
     let mut viewmodel = TuiViewModel::new(app);
 
-    let mut rect = TuiRect::from_size(BorderKind::Double, (2, 1), (0, 0));
-    let mut rect2 = TuiRect::from_size(BorderKind::Heavy, (60, 30), (10, 5));
+    let tiles = TuiTiles {
+        structure: TuiStructure {
+            kind: TuiSplit::VSplit,
+            stuffs: vec![
+                TuiStructureLink::Element(String::from("One")),
+                TuiStructureLink::Element(String::from("Two")),
+                TuiStructureLink::Structure(TuiStructure {
+                    kind: TuiSplit::VSplit,
+                    stuffs: vec![
+                        TuiStructureLink::Structure(TuiStructure {
+                            kind: TuiSplit::HSplit,
+                            stuffs: vec![
+                                TuiStructureLink::Element(String::from("Three")),
+                                TuiStructureLink::Element(String::from("Four")),
+                                TuiStructureLink::Element(String::from("Five")),
+                            ],
+                        }),
+                        TuiStructureLink::Element(String::from("Six")),
+                    ],
+                }),
+            ],
+        }
+    };
     let (mut w, mut h) = terminal::size()?;
     startup()?;
     loop {
-        rect.set_size((w - 4, h - 2));
-        rect.draw()?;
-        rect2.draw()?;
+        tiles.draw()?;
         command_bar(&viewmodel)?;
+        stdout().flush()?;
         if event::poll(Duration::from_millis(15))? {
             match event::read()? {
                 Event::Resize(wi, he) => {
                     (w, h) = (wi, he);
-                    sleep(Duration::from_millis(10));
                     stdout().queue(Clear(ClearType::All))?;
                 }
                 Event::Key(event) => match viewmodel.mode {
@@ -62,8 +87,8 @@ pub fn tui(app: Arc<Mutex<App>>) -> Result<()> {
                         KeyCode::Char(':') => viewmodel.change_mode(TuiMode::Command),
                         KeyCode::Char('c') | KeyCode::Char('d') => if event.modifiers == KeyModifiers::CONTROL { break; }
                         KeyCode::Esc => viewmodel.change_mode(TuiMode::Unfocused),
-                        KeyCode::Down => viewmodel.change_waveform(Waveform::Square),
-                        KeyCode::Up => viewmodel.change_waveform(Waveform::Sine),
+                        KeyCode::Down => viewmodel.test_apply_instruction(0, Instruction::Waveform(Waveform::Square)),
+                        KeyCode::Up => viewmodel.test_apply_instruction(0, Instruction::Waveform(Waveform::Sine)),
                         _ => {}
                     },
                     TuiMode::Command => match event.code {
@@ -83,16 +108,18 @@ pub fn tui(app: Arc<Mutex<App>>) -> Result<()> {
                                 "on" | "off" => {
                                     if let Some(arg1) = stuff.get(1) {
                                         if let Ok(osc) = arg1.parse::<usize>() {
-                                            // FIXME do it
-                                            viewmodel.app.lock().unwrap().oscillators.get_mut(osc).unwrap().is_on = command.eq("on");
+                                            if command.eq("on") {
+                                                viewmodel.test_apply_instruction(osc, Instruction::On)
+                                            } else {
+                                                viewmodel.test_apply_instruction(osc, Instruction::Off)
+                                            }
                                         }
                                     }
                                 }
                                 "hz" => {
                                     if let (Some(arg1), Some(arg2)) = (stuff.get(1), stuff.get(2)) {
                                         if let (Ok(osc), Ok(hz)) = (arg1.parse::<usize>(), arg2.parse::<f32>()) {
-                                            // FIXME do it
-                                            viewmodel.app.lock().unwrap().oscillators.get_mut(osc).unwrap().frequency_hz = hz
+                                            viewmodel.test_apply_instruction(osc, Instruction::Frequency(hz))
                                         }
                                     }
                                 }
@@ -148,7 +175,7 @@ fn command_bar(vm: &TuiViewModel) -> Result<()> {
         .queue(cursor::MoveTo(0, h - 1))?
         .queue(style::Print(String::from(
             if vm.mode == TuiMode::Command { ":" } else { " " }) + vm.cmd_buf.as_str()))?
-        .flush()?
+    // .flush()?
     ;
     Ok(())
 }
