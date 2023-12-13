@@ -1,8 +1,8 @@
-use std::io;
-use std::io::{stdout, Write, Result};
-use crossterm::{cursor, QueueableCommand, style};
 use crossterm::style::Attribute::Bold;
 use crossterm::style::Stylize;
+use crossterm::{cursor, style, QueueableCommand};
+use std::io;
+use std::io::{stdout, Result, Write};
 
 pub struct TuiTiles {
     pub structure: TuiStructure,
@@ -60,12 +60,15 @@ impl TuiStructure {
                 }
             }
             match structure {
-                TuiStructureLink::Structure(s) => s.draw(new_left, new_right, new_top, new_bottom)?,
+                TuiStructureLink::Structure(s) => {
+                    s.draw(new_left, new_right, new_top, new_bottom)?
+                }
                 TuiStructureLink::Element(n) => TuiRect::draw_rect(
                     String::from(n),
                     BorderKind::Double,
                     (new_left, new_top),
-                    (new_right, new_bottom))?,
+                    (new_right, new_bottom),
+                )?,
                 TuiStructureLink::Empty => {}
             }
         }
@@ -85,7 +88,7 @@ impl BorderKind {
         match self {
             BorderKind::Heavy => ["┃", "━", "┏", "┓", "┗", "┛"],
             BorderKind::Single => ["│", "─", "┌", "┐", "└", "┘"],
-            BorderKind::Double => ["║", "═", "╔", "╗", "╚", "╝"]
+            BorderKind::Double => ["║", "═", "╔", "╗", "╚", "╝"],
         }
     }
 }
@@ -93,16 +96,24 @@ impl BorderKind {
 pub struct TuiRect;
 
 impl TuiRect {
-    pub fn draw_rect(name: String, kind: BorderKind, from: (u16, u16), to: (u16, u16)) -> Result<()> {
+    pub fn draw_rect(
+        name: String,
+        kind: BorderKind,
+        from: (u16, u16),
+        to: (u16, u16),
+    ) -> Result<()> {
         let (pipe, dash, tlc, trc, blc, brc) = kind.get_symbols().into();
 
         let w_repeat = from.0.abs_diff(to.0);
         let h_repeat = from.1.abs_diff(to.1);
 
         let tag = String::from(" ")
-            + name.chars().take((w_repeat as usize - 2).max(0)).collect::<String>().as_str()
+            + name
+                .chars()
+                .take((w_repeat as usize - 2).max(0))
+                .collect::<String>()
+                .as_str()
             + " ";
-
 
         Self::draw_line(w_repeat, from.0, from.1, tlc, dash, trc)?;
         for i in 1..h_repeat {

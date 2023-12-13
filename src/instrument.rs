@@ -1,6 +1,9 @@
 use crate::app::Instruction;
 
+mod adsr;
 pub mod oscillator;
+pub mod synth;
+mod vibrato;
 
 pub trait Instrument: Send {
     fn tick(&mut self) -> f32;

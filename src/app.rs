@@ -1,5 +1,6 @@
-use crate::instrument::Instrument;
 use crate::instrument::oscillator::{Oscillator, Waveform};
+use crate::instrument::synth::Synth;
+use crate::instrument::Instrument;
 
 pub struct App {
     pub instruments: Vec<Box<dyn Instrument>>,
@@ -10,7 +11,7 @@ pub struct App {
 impl App {
     pub fn new() -> Self {
         Self {
-            instruments: vec![Box::new(Oscillator::default())],
+            instruments: vec![Box::new(Synth::new())],
             instructions: vec![],
             delay: 125,
         }
@@ -25,7 +26,7 @@ impl App {
     }
 
     pub fn get_bpm(&self) -> u16 {
-        return 15000 / self.delay
+        return 15000 / self.delay;
     }
 
     pub fn set_bpm(&mut self, bpm: u16) {
@@ -33,14 +34,17 @@ impl App {
     }
 
     pub fn set_sample_rates(&mut self, sample_rate: f32) {
-        self.instruments.iter_mut().for_each( |it| {
+        self.instruments.iter_mut().for_each(|it| {
             it.set_sample_rate(sample_rate);
         })
     }
 
     pub fn tick_all(&mut self) -> f32 {
         // TODO: find cleaner way to handle amplitude
-        self.instruments.iter_mut().fold(0.0, |acc, it| { acc + it.tick() }) / 8.0
+        self.instruments
+            .iter_mut()
+            .fold(0.0, |acc, it| acc + it.tick())
+            / 8.0
     }
 }
 
@@ -49,7 +53,6 @@ pub enum Instruction {
     Frequency(f32),
     // TODO: Notes should probably be something other than just a number
     Note(u16),
-    On,
-    Off
+    SetState(bool),
+    SetVibrato(bool),
 }
-

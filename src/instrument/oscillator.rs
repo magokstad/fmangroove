@@ -13,24 +13,25 @@ pub struct Oscillator {
     pub sample_rate: f32,
     pub waveform: Waveform,
     pub current_sample_index: f32,
+    pub current_sample_jump: f32,
     pub frequency_hz: f32,
     pub is_on: bool,
 }
 
 impl Oscillator {
-
     pub fn default() -> Self {
         Self {
             sample_rate: 0.0,
             waveform: Waveform::Sine,
             current_sample_index: 0.0,
+            current_sample_jump: 1.0,
             frequency_hz: 220.0,
-            is_on: false
+            is_on: false,
         }
     }
 
     fn advance_sample(&mut self) {
-        self.current_sample_index = (self.current_sample_index + 1.0) % self.sample_rate;
+        self.current_sample_index = (self.current_sample_index + self.current_sample_jump) % self.sample_rate;
     }
 
     pub fn set_waveform(&mut self, waveform: Waveform) {
@@ -50,12 +51,18 @@ impl Oscillator {
         self.calculate_sine_output_from_freq(self.frequency_hz)
     }
 
-    fn generative_waveform(&mut self, harmonic_index_increment: i32, gain_exponent: f32) -> f32 {
+    fn generative_waveform(
+        &mut self,
+        harmonic_index_increment: i32,
+        gain_exponent: f32,
+    ) -> f32 {
         let mut output = 0.0;
         let mut i = 1;
         while !self.is_multiple_of_freq_above_nyquist(i as f32) {
             let gain = 1.0 / (i as f32).powf(gain_exponent);
-            output += gain * self.calculate_sine_output_from_freq(self.frequency_hz * i as f32);
+            output += gain
+                * self
+                    .calculate_sine_output_from_freq(self.frequency_hz * i as f32);
             i += harmonic_index_increment;
         }
         output
@@ -76,7 +83,7 @@ impl Oscillator {
     pub fn tick(&mut self) -> f32 {
         self.advance_sample();
         if !self.is_on {
-            return 0.0
+            return 0.0;
         }
         match self.waveform {
             Waveform::Sine => self.sine_wave(),
@@ -100,9 +107,8 @@ impl Instrument for Oscillator {
         match instruction {
             Instruction::Waveform(w) => self.waveform = w,
             Instruction::Frequency(f) => self.frequency_hz = f,
-            Instruction::Note(u) => unimplemented!(),
-            Instruction::Off => self.is_on = false,
-            Instruction::On => self.is_on = true
+            Instruction::SetState(b) => self.is_on = b,
+            _ => {}
         }
     }
 }

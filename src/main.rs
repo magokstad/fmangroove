@@ -1,14 +1,14 @@
-use std::sync::{Arc, Mutex};
-use cpal::traits::StreamTrait;
 use crate::app::App;
+use cpal::traits::StreamTrait;
+use std::sync::{Arc, Mutex};
 
-mod view;
 mod app;
 mod audio;
 mod instrument;
+mod view;
 
 fn main() -> anyhow::Result<()> {
-    let app = Arc::new(Mutex::new(App:: new()));
+    let app = Arc::new(Mutex::new(App::new()));
     let stream = audio::stream_setup_for(app.clone()).expect("bad setup");
 
     stream.play().expect("can't play");
