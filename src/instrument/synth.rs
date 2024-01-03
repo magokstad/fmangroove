@@ -8,6 +8,7 @@ pub struct Synth {
     oscillator: Oscillator,
     adsr: ADSR,
     vibrato: Vibrato,
+    volume: (f32, f32),
 }
 
 impl Synth {
@@ -19,18 +20,16 @@ impl Synth {
             oscillator: osc,
             adsr: ADSR::new(0.1, 0.5, 0.5, 0.3),
             vibrato: Vibrato::new(6.0, 0.01),
+            volume: (1.0, 1.0),
         }
     }
 }
 
 impl Instrument for Synth {
-    fn tick(&mut self) -> f32 {
-        // let og = self.oscillator.frequency_hz;
-        // self.oscillator.frequency_hz += self.vibrato.tick();
+    fn tick(&mut self) -> (f32, f32) {
         self.oscillator.current_sample_jump = self.vibrato.tick();
         let ans = self.oscillator.tick() * self.adsr.tick();
-        // self.oscillator.frequency_hz = og;
-        ans
+        (ans * self.volume.0, ans * self.volume.1)
     }
 
     fn set_sample_rate(&mut self, sample_rate: f32) {

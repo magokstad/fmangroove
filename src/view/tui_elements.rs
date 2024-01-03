@@ -40,6 +40,10 @@ pub struct TuiStructure {
     pub stuffs: Vec<TuiStructureLink>,
 }
 
+pub struct TuiPanel {
+
+}
+
 impl TuiStructure {
     fn draw(&self, left: u16, right: u16, top: u16, bottom: u16) -> Result<()> {
         let splits = self.stuffs.len().max(1);
@@ -65,7 +69,7 @@ impl TuiStructure {
                 }
                 TuiStructureLink::Element(n) => TuiRect::draw_rect(
                     String::from(n),
-                    BorderKind::Double,
+                    BorderKind::Single,
                     (new_left, new_top),
                     (new_right, new_bottom),
                 )?,

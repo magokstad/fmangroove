@@ -71,12 +71,16 @@ where
     SampleType: Sample + FromSample<f32>,
 {
     for frame in output.chunks_mut(num_channels) {
-        let x = app.lock().unwrap().tick_all();
-        let value: SampleType = SampleType::from_sample(x);
+        let (l,r) = app.lock().unwrap().tick_all();
+        let left: SampleType = SampleType::from_sample(l);
+        let right: SampleType = SampleType::from_sample(r);
 
-        // copy the same value to all channels
-        for sample in frame.iter_mut() {
-            *sample = value;
+        for (index, sample) in frame.iter_mut().enumerate() {
+            match index {
+                0 => *sample = left,
+                1 => *sample = right,
+                _ => {}
+            }
         }
     }
 }

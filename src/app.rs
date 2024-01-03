@@ -1,19 +1,22 @@
-use crate::instrument::oscillator::{Oscillator, Waveform};
+use std::collections::HashMap;
+use crate::instrument::oscillator::{Waveform};
 use crate::instrument::synth::Synth;
 use crate::instrument::Instrument;
 
 pub struct App {
     pub instruments: Vec<Box<dyn Instrument>>,
-    instructions: Vec<Vec<Instruction>>,
+    instructions: HashMap<u128, Vec<Instruction>>,
     delay: u16,
+    tick: u128,
 }
 
 impl App {
     pub fn new() -> Self {
         Self {
             instruments: vec![Box::new(Synth::new())],
-            instructions: vec![],
+            instructions: HashMap::new(),
             delay: 125,
+            tick: 0
         }
     }
 
@@ -39,12 +42,19 @@ impl App {
         })
     }
 
-    pub fn tick_all(&mut self) -> f32 {
+    pub fn tick_all(&mut self) -> (f32, f32) {
+        // TODO: instruction handling here
+
+
+        // Audio handling
+        let (mut left, mut right) = (0.0, 0.0);
+        for inst in self.instruments.iter_mut() {
+            let (l,r) = inst.tick();
+            left += l;
+            right += r;
+        }
         // TODO: find cleaner way to handle amplitude
-        self.instruments
-            .iter_mut()
-            .fold(0.0, |acc, it| acc + it.tick())
-            / 8.0
+        (left / 8.0, right / 8.0)
     }
 }
 

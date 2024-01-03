@@ -1,17 +1,20 @@
-use std::fmt::format;
 use crate::app::{App, Instruction};
 use crate::instrument::oscillator::Waveform;
 use crate::view::tui_elements::TuiSplit;
-use crate::view::tui_elements::{BorderKind, TuiRect, TuiStructure, TuiStructureLink, TuiTiles};
-use crossterm::event::{self, Event, KeyCode, KeyModifiers};
+use crate::view::tui_elements::{TuiStructure, TuiStructureLink, TuiTiles};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use crossterm::terminal::{self, disable_raw_mode, enable_raw_mode, Clear, ClearType};
-use crossterm::{cursor, queue, style, Command, ExecutableCommand, QueueableCommand};
+use crossterm::{cursor, style, QueueableCommand};
 use std::io::{stdout, Result, Write};
 use std::sync::{Arc, Mutex};
-use std::thread::sleep;
 use std::time::Duration;
 
 mod tui_elements;
+
+enum LoopStatus {
+    Continue,
+    Break,
+}
 
 #[derive(Copy, Clone, Eq, PartialEq)]
 enum TuiMode {
@@ -103,53 +106,10 @@ pub fn tui(app: Arc<Mutex<App>>) -> Result<()> {
                             .test_apply_instruction(0, Instruction::Waveform(Waveform::Sine)),
                         _ => {}
                     },
-                    TuiMode::Command => match event.code {
-                        KeyCode::Esc => viewmodel.change_mode(TuiMode::Unfocused),
-                        KeyCode::Char(c) => {
-                            viewmodel.cmd_buf.push(c);
-                        }
-                        KeyCode::Backspace => {
-                            viewmodel.cmd_buf.pop();
-                        }
-                        KeyCode::Enter => {
-                            viewmodel.status_buf.clear();
-                            let stuff: Vec<&str> = viewmodel.cmd_buf.split(" ").collect();
-                            let none = "";
-                            let command = *stuff.get(0).unwrap_or(&none);
-                            match command {
-                                "quit" | "q" => break,
-                                "on" | "off" => {
-                                    if let Some(arg1) = stuff.get(1) {
-                                        if let Ok(osc) = arg1.parse::<usize>() {
-                                            viewmodel.test_apply_instruction(osc, Instruction::SetState(command.eq("on")));
-                                        }
-                                    }
-                                }
-                                "vibon" | "viboff" => {
-                                    if let Some(arg1) = stuff.get(1) {
-                                        if let Ok(osc) = arg1.parse::<usize>() {
-                                            viewmodel.test_apply_instruction(osc, Instruction::SetVibrato(command.eq("vibon")));
-                                        }
-                                    }
-                                }
-                                "hz" => {
-                                    if let (Some(arg1), Some(arg2)) = (stuff.get(1), stuff.get(2)) {
-                                        if let (Ok(osc), Ok(hz)) =
-                                            (arg1.parse::<usize>(), arg2.parse::<f32>())
-                                        {
-                                            viewmodel.test_apply_instruction(
-                                                osc,
-                                                Instruction::Frequency(hz),
-                                            )
-                                        }
-                                    }
-                                }
-                                _ =>  viewmodel.status_buf = String::from(format!("unknown command '{}'", viewmodel.cmd_buf))
-                            }
-                            viewmodel.change_mode(TuiMode::Unfocused)
-                        }
-                        _ => {}
-                    },
+                    TuiMode::Command => match handle_command(&mut viewmodel, event) {
+                        LoopStatus::Break => break,
+                        LoopStatus::Continue => {},
+                    }
                 },
                 _ => {}
             }
@@ -157,6 +117,59 @@ pub fn tui(app: Arc<Mutex<App>>) -> Result<()> {
     }
     shutdown()?;
     Ok(())
+}
+
+// TODO: Terrible parser, improve
+fn handle_command(viewmodel: &mut TuiViewModel, event: KeyEvent) -> LoopStatus {
+    match event.code {
+        KeyCode::Esc => viewmodel.change_mode(TuiMode::Unfocused),
+        KeyCode::Char(c) => {
+            viewmodel.cmd_buf.push(c);
+        }
+        KeyCode::Backspace => {
+            viewmodel.cmd_buf.pop();
+        }
+        KeyCode::Enter => {
+            viewmodel.status_buf.clear();
+            let stuff: Vec<&str> = viewmodel.cmd_buf.split(" ").collect();
+            let none = "";
+            let command = *stuff.get(0).unwrap_or(&none);
+            match command {
+                "quit" | "q" => return LoopStatus::Break,
+                "on" | "off" => {
+                    if let Some(arg1) = stuff.get(1) {
+                        if let Ok(osc) = arg1.parse::<usize>() {
+                            viewmodel.test_apply_instruction(osc, Instruction::SetState(command.eq("on")));
+                        }
+                    }
+                }
+                "vibon" | "viboff" => {
+                    if let Some(arg1) = stuff.get(1) {
+                        if let Ok(osc) = arg1.parse::<usize>() {
+                            viewmodel.test_apply_instruction(osc, Instruction::SetVibrato(command.eq("vibon")));
+                        }
+                    }
+                }
+                "hz" => {
+                    if let (Some(arg1), Some(arg2)) = (stuff.get(1), stuff.get(2)) {
+                        if let (Ok(osc), Ok(hz)) =
+                            (arg1.parse::<usize>(), arg2.parse::<f32>())
+                        {
+                            viewmodel.test_apply_instruction(
+                                osc,
+                                Instruction::Frequency(hz),
+                            )
+                        }
+                    }
+                }
+                _ =>  viewmodel.status_buf = String::from(format!("unknown command '{}'", viewmodel.cmd_buf))
+            }
+            viewmodel.change_mode(TuiMode::Unfocused)
+        }
+        _ => {}
+    }
+
+    LoopStatus::Continue
 }
 
 fn startup() -> Result<()> {

@@ -95,8 +95,9 @@ impl Oscillator {
 }
 
 impl Instrument for Oscillator {
-    fn tick(&mut self) -> f32 {
-        self.tick()
+    fn tick(&mut self) -> (f32, f32) {
+        let x = self.tick();
+        (x,x)
     }
 
     fn set_sample_rate(&mut self, sample_rate: f32) {
