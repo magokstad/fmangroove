@@ -13,7 +13,8 @@ pub struct App {
 impl App {
     pub fn new() -> Self {
         Self {
-            instruments: vec![Box::new(Synth::new())],
+            instruments: vec![Box::new(Synth::new()), Box::new({
+                let mut x = Synth::new(); x.apply_instruction(Instruction::Waveform(Waveform::Saw)); x })],
             instructions: HashMap::new(),
             delay: 125,
             tick: 0
@@ -44,7 +45,6 @@ impl App {
 
     pub fn tick_all(&mut self) -> (f32, f32) {
         // TODO: instruction handling here
-
 
         // Audio handling
         let (mut left, mut right) = (0.0, 0.0);

@@ -2,7 +2,7 @@ use crate::app::{App, Instruction};
 use crate::instrument::oscillator::Waveform;
 use crate::view::tui_elements::TuiSplit;
 use crate::view::tui_elements::{TuiStructure, TuiStructureLink, TuiTiles};
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use crossterm::terminal::{self, disable_raw_mode, enable_raw_mode, Clear, ClearType};
 use crossterm::{cursor, style, QueueableCommand};
 use std::io::{stdout, Result, Write};
@@ -89,7 +89,7 @@ pub fn tui(app: Arc<Mutex<App>>) -> Result<()> {
             match event::read()? {
                 Event::Resize(wi, he) => {
                     (w, h) = (wi, he);
-                    stdout().queue(Clear(ClearType::All))?;
+                    stdout().queue(Clear(ClearType::Purge))?;
                 }
                 Event::Key(event) => match viewmodel.mode {
                     TuiMode::Unfocused => match event.code {
@@ -106,7 +106,7 @@ pub fn tui(app: Arc<Mutex<App>>) -> Result<()> {
                             .test_apply_instruction(0, Instruction::Waveform(Waveform::Sine)),
                         _ => {}
                     },
-                    TuiMode::Command => match handle_command(&mut viewmodel, event) {
+                    TuiMode::Command => match handle_command(&mut viewmodel, event)? {
                         LoopStatus::Break => break,
                         LoopStatus::Continue => {},
                     }
@@ -120,7 +120,10 @@ pub fn tui(app: Arc<Mutex<App>>) -> Result<()> {
 }
 
 // TODO: Terrible parser, improve
-fn handle_command(viewmodel: &mut TuiViewModel, event: KeyEvent) -> LoopStatus {
+fn handle_command(viewmodel: &mut TuiViewModel, event: KeyEvent) -> Result<LoopStatus> {
+    if let KeyEventKind::Release = event.kind {
+        return Ok(LoopStatus::Continue)
+    }
     match event.code {
         KeyCode::Esc => viewmodel.change_mode(TuiMode::Unfocused),
         KeyCode::Char(c) => {
@@ -135,7 +138,10 @@ fn handle_command(viewmodel: &mut TuiViewModel, event: KeyEvent) -> LoopStatus {
             let none = "";
             let command = *stuff.get(0).unwrap_or(&none);
             match command {
-                "quit" | "q" => return LoopStatus::Break,
+                "quit" | "q" => return Ok(LoopStatus::Break),
+                "clear" | "cls" => {
+                    stdout().queue(Clear(ClearType::Purge))?;
+                },
                 "on" | "off" => {
                     if let Some(arg1) = stuff.get(1) {
                         if let Ok(osc) = arg1.parse::<usize>() {
@@ -169,7 +175,7 @@ fn handle_command(viewmodel: &mut TuiViewModel, event: KeyEvent) -> LoopStatus {
         _ => {}
     }
 
-    LoopStatus::Continue
+    Ok(LoopStatus::Continue)
 }
 
 fn startup() -> Result<()> {
