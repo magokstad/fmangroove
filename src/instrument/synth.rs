@@ -1,4 +1,4 @@
-use crate::app::Instruction;
+use crate::app::{InstructionKind, Status};
 use crate::instrument::adsr::ADSR;
 use crate::instrument::oscillator::{Oscillator, Waveform};
 use crate::instrument::vibrato::Vibrato;
@@ -38,12 +38,18 @@ impl Instrument for Synth {
         self.vibrato.set_sample_rate(sample_rate);
     }
 
-    fn apply_instruction(&mut self, instruction: Instruction) {
+    fn apply_instruction(&mut self, instruction: InstructionKind) {
         match instruction {
-            Instruction::Waveform(w) => self.oscillator.waveform = w,
-            Instruction::SetState(b) => if b { self.adsr.press() } else { self.adsr.release() },
-            Instruction::SetVibrato(b) => self.vibrato.set_state(b),
-            Instruction::Frequency(f) => self.oscillator.frequency_hz = f,
+            InstructionKind::Waveform(w) => self.oscillator.waveform = w,
+            InstructionKind::SetState(s) => match s {
+                Status::On => self.adsr.press(),
+                Status::Off => self.adsr.release()
+            },
+            InstructionKind::SetVibrato(s) => match s {
+                Status::On => self.vibrato.set_state(false),
+                Status::Off => self.vibrato.set_state(false)
+            }
+            InstructionKind::Frequency(f) => self.oscillator.frequency_hz = f,
             _ => {}
         }
     }

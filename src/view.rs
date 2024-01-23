@@ -1,4 +1,4 @@
-use crate::app::{App, Instruction};
+use crate::app::{App, Instruction, InstructionKind, Status};
 use crate::instrument::oscillator::Waveform;
 use crate::view::tui_elements::TuiSplit;
 use crate::view::tui_elements::{TuiStructure, TuiStructureLink, TuiTiles};
@@ -46,7 +46,25 @@ impl TuiViewModel {
         }
     }
 
-    fn test_apply_instruction(&mut self, i: usize, instruction: Instruction) {
+    fn play(&mut self) {
+       self.app.lock().unwrap().play();
+    }
+
+    fn pause(&mut self) {
+        self.app.lock().unwrap().pause();
+    }
+
+    fn reset(&mut self) {
+        self.app.lock().unwrap().reset();
+    }
+
+    fn add_instruction(&mut self, frame: u128, instruction: Instruction) {
+        self.app.lock().unwrap().instructions.entry(frame)
+            .and_modify(|v| v.push(instruction))
+            .or_insert(vec![instruction]);
+    }
+
+    fn test_apply_instruction(&mut self, i: usize, instruction: InstructionKind) {
         if let Some(instrument) = self.app.lock().unwrap().instruments.get_mut(i) {
             instrument.apply_instruction(instruction)
         }
@@ -55,6 +73,16 @@ impl TuiViewModel {
 
 pub fn tui(app: Arc<Mutex<App>>) -> Result<()> {
     let mut viewmodel = TuiViewModel::new(app);
+
+    // FIXME: Testing
+    viewmodel.add_instruction(0, Instruction::new(InstructionKind::SetState(Status::On), 0));
+    viewmodel.add_instruction(40000, Instruction::new(InstructionKind::SetVibrato(Status::On), 0));
+    viewmodel.add_instruction(40000, Instruction::new(InstructionKind::SetState(Status::Off), 0));
+    viewmodel.add_instruction(80000, Instruction::new(InstructionKind::SetState(Status::On), 0));
+    viewmodel.add_instruction(80000, Instruction::new(InstructionKind::Frequency(440.0), 0));
+    viewmodel.add_instruction(80000, Instruction::new(InstructionKind::SetVibrato(Status::On), 0));
+    viewmodel.add_instruction(80000, Instruction::new(InstructionKind::SetState(Status::Off), 0));
+    viewmodel.add_instruction(120000, Instruction::new(InstructionKind::Frequency(220.0), 0));
 
     let tiles = TuiTiles {
         structure: TuiStructure {
@@ -101,9 +129,9 @@ pub fn tui(app: Arc<Mutex<App>>) -> Result<()> {
                         }
                         KeyCode::Esc => viewmodel.change_mode(TuiMode::Unfocused),
                         KeyCode::Down => viewmodel
-                            .test_apply_instruction(0, Instruction::Waveform(Waveform::Square)),
+                            .test_apply_instruction(0, InstructionKind::Waveform(Waveform::Square)),
                         KeyCode::Up => viewmodel
-                            .test_apply_instruction(0, Instruction::Waveform(Waveform::Sine)),
+                            .test_apply_instruction(0, InstructionKind::Waveform(Waveform::Sine)),
                         _ => {}
                     },
                     TuiMode::Command => match handle_command(&mut viewmodel, event)? {
@@ -140,19 +168,21 @@ fn handle_command(viewmodel: &mut TuiViewModel, event: KeyEvent) -> Result<LoopS
             match command {
                 "quit" | "q" => return Ok(LoopStatus::Break),
                 "clear" | "cls" => {
-                    stdout().queue(Clear(ClearType::Purge))?;
+                    stdout()
+                        .queue(Clear(ClearType::All))?
+                        .queue(Clear(ClearType::Purge))?;
                 },
                 "on" | "off" => {
                     if let Some(arg1) = stuff.get(1) {
                         if let Ok(osc) = arg1.parse::<usize>() {
-                            viewmodel.test_apply_instruction(osc, Instruction::SetState(command.eq("on")));
+                            viewmodel.test_apply_instruction(osc, InstructionKind::SetState(if command.eq("on") {Status::On} else {Status::Off} ));
                         }
                     }
                 }
                 "vibon" | "viboff" => {
                     if let Some(arg1) = stuff.get(1) {
                         if let Ok(osc) = arg1.parse::<usize>() {
-                            viewmodel.test_apply_instruction(osc, Instruction::SetVibrato(command.eq("vibon")));
+                            viewmodel.test_apply_instruction(osc, InstructionKind::SetVibrato(if command.eq("vibon") {Status::On} else {Status::Off} ));
                         }
                     }
                 }
@@ -163,11 +193,14 @@ fn handle_command(viewmodel: &mut TuiViewModel, event: KeyEvent) -> Result<LoopS
                         {
                             viewmodel.test_apply_instruction(
                                 osc,
-                                Instruction::Frequency(hz),
+                                InstructionKind::Frequency(hz),
                             )
                         }
                     }
                 }
+                "play" => viewmodel.play(),
+                "pause" => viewmodel.pause(),
+                "reset" => viewmodel.reset(),
                 _ =>  viewmodel.status_buf = String::from(format!("unknown command '{}'", viewmodel.cmd_buf))
             }
             viewmodel.change_mode(TuiMode::Unfocused)
@@ -193,6 +226,7 @@ fn shutdown() -> Result<()> {
         .queue(cursor::Show)?
         .queue(cursor::SetCursorStyle::DefaultUserShape)?
         .queue(Clear(ClearType::Purge))?
+        .queue(Clear(ClearType::All))?
         .queue(cursor::MoveTo(0, 0))?
         .flush()?;
     Ok(())

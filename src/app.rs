@@ -1,23 +1,30 @@
 use std::collections::HashMap;
+use std::ops::Add;
 use crate::instrument::oscillator::{Waveform};
 use crate::instrument::synth::Synth;
 use crate::instrument::Instrument;
 
 pub struct App {
+    // FIXME: temporary pubs
     pub instruments: Vec<Box<dyn Instrument>>,
-    instructions: HashMap<u128, Vec<Instruction>>,
+    pub instructions: HashMap<u128, Vec<Instruction>>,
     delay: u16,
     tick: u128,
+    playing: bool
 }
 
 impl App {
     pub fn new() -> Self {
         Self {
-            instruments: vec![Box::new(Synth::new()), Box::new({
-                let mut x = Synth::new(); x.apply_instruction(Instruction::Waveform(Waveform::Saw)); x })],
+            instruments: vec![
+                Box::new(Synth::new()),
+                Box::new({
+                    let mut x = Synth::new(); x.apply_instruction(InstructionKind::Waveform(Waveform::Saw)); x
+                })],
             instructions: HashMap::new(),
             delay: 125,
-            tick: 0
+            tick: 0,
+            playing: false,
         }
     }
 
@@ -43,8 +50,34 @@ impl App {
         })
     }
 
+    pub fn play(&mut self) {
+        self.playing = true
+    }
+
+    pub fn pause(&mut self) {
+        self.playing = false
+    }
+
+    pub fn reset(&mut self) {
+        self.tick = 0
+    }
+
     pub fn tick_all(&mut self) -> (f32, f32) {
+        // Temporary pausing
+        if !self.playing {
+            return (0.0, 0.0);
+        }
+
         // TODO: instruction handling here
+        // TODO: What if illegal instruction?
+        if let Some(lst) = self.instructions.get(&self.tick) {
+            for instruction in lst {
+                if let Some(instrument) = self.instruments.get_mut(instruction.target as usize) {
+                    instrument.apply_instruction(instruction.kind)
+                }
+            }
+        }
+        self.tick = self.tick.checked_add(1).unwrap_or(u128::MAX);
 
         // Audio handling
         let (mut left, mut right) = (0.0, 0.0);
@@ -58,11 +91,29 @@ impl App {
     }
 }
 
-pub enum Instruction {
+
+
+#[derive(Copy, Clone)]
+pub enum Status { On, Off }
+
+#[derive(Copy, Clone)]
+pub enum InstructionKind {
     Waveform(Waveform),
     Frequency(f32),
     // TODO: Notes should probably be something other than just a number
     Note(u16),
-    SetState(bool),
-    SetVibrato(bool),
+    SetState(Status),
+    SetVibrato(Status),
+}
+
+#[derive(Copy, Clone)]
+pub struct Instruction {
+    kind: InstructionKind,
+    target: u128
+}
+
+impl Instruction {
+    pub fn new(kind: InstructionKind, target: u128) -> Self {
+       Self { kind, target }
+    }
 }

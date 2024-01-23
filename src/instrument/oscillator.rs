@@ -1,4 +1,4 @@
-use crate::app::Instruction;
+use crate::app::{InstructionKind, Status};
 use crate::instrument::Instrument;
 
 #[derive(Copy, Clone)]
@@ -104,11 +104,14 @@ impl Instrument for Oscillator {
         self.sample_rate = sample_rate
     }
 
-    fn apply_instruction(&mut self, instruction: Instruction) {
+    fn apply_instruction(&mut self, instruction: InstructionKind) {
         match instruction {
-            Instruction::Waveform(w) => self.waveform = w,
-            Instruction::Frequency(f) => self.frequency_hz = f,
-            Instruction::SetState(b) => self.is_on = b,
+            InstructionKind::Waveform(w) => self.waveform = w,
+            InstructionKind::Frequency(f) => self.frequency_hz = f,
+            InstructionKind::SetState(s) => match s {
+                Status::On => self.is_on = true,
+                Status::Off => self.is_on = false
+            },
             _ => {}
         }
     }
