@@ -6,6 +6,9 @@ mod app;
 mod audio;
 mod instrument;
 mod view;
+mod instruction;
+mod util;
+mod instruction_handler;
 
 fn main() -> anyhow::Result<()> {
     let app = Arc::new(Mutex::new(App::new()));

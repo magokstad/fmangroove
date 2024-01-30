@@ -1,7 +1,7 @@
-use crate::app::{InstructionKind, Status};
+use crate::instruction::{InstructionKind, Status};
 use crate::instrument::Instrument;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum Waveform {
     Sine,
     Square,
@@ -31,7 +31,10 @@ impl Oscillator {
     }
 
     fn advance_sample(&mut self) {
-        self.current_sample_index = (self.current_sample_index + self.current_sample_jump) % self.sample_rate;
+        self.current_sample_index = (self.current_sample_index + self.current_sample_jump) % (self.sample_rate / self.frequency_hz)
+        // self.current_sample_index = (self.current_sample_index + self.current_sample_jump) % (two_pi * self.frequency_hz);
+        // self.current_sample_index += 1.0;
+        // self.current_sample_index += self.current_sample_jump;
     }
 
     pub fn set_waveform(&mut self, waveform: Waveform) {
@@ -104,15 +107,17 @@ impl Instrument for Oscillator {
         self.sample_rate = sample_rate
     }
 
-    fn apply_instruction(&mut self, instruction: InstructionKind) {
+    fn apply_instruction(&mut self, instruction: InstructionKind) -> Result<(), &'static str> {
         match instruction {
             InstructionKind::Waveform(w) => self.waveform = w,
             InstructionKind::Frequency(f) => self.frequency_hz = f,
-            InstructionKind::SetState(s) => match s {
+            InstructionKind::Note(u) => self.frequency_hz = 2f32.powf((u as f32 - 60.0) / 12.0) * 440.0,
+            InstructionKind::State(s) => match s {
                 Status::On => self.is_on = true,
                 Status::Off => self.is_on = false
             },
-            _ => {}
+            _ => return Err("Illegal instruction for 'Oscillator'")
         }
+        Ok(())
     }
 }

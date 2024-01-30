@@ -1,4 +1,4 @@
-use crate::app::InstructionKind;
+use crate::instruction::InstructionKind;
 
 mod adsr;
 pub mod oscillator;
@@ -10,5 +10,5 @@ pub trait Instrument: Send {
 
     fn set_sample_rate(&mut self, sample_rate: f32);
 
-    fn apply_instruction(&mut self, instruction: InstructionKind);
+    fn apply_instruction(&mut self, instruction: InstructionKind) -> Result<(), &'static str>;
 }

@@ -1,8 +1,8 @@
 use crossterm::style::Attribute::Bold;
 use crossterm::style::Stylize;
 use crossterm::{cursor, style, QueueableCommand};
-use std::io;
-use std::io::{stdout, Result, Write};
+use std::io::{stdout, Result, Stdout};
+use std::process::Stdio;
 
 pub struct TuiTiles {
     pub structure: TuiStructure,
@@ -48,9 +48,12 @@ impl TuiStructure {
     fn draw(&self, left: u16, right: u16, top: u16, bottom: u16) -> Result<()> {
         let splits = self.stuffs.len().max(1);
 
+
         let (mut new_top, mut new_bottom, mut new_left, mut new_right) = (top, bottom, left, right);
 
         for (ind, structure) in self.stuffs.iter().enumerate() {
+            let xtra = if ind+1 == self.stuffs.len() { (right - left) % splits as u16 } else {0};
+            let ytra = if ind+1 == self.stuffs.len() { (bottom - top) % splits as u16 } else {0};
             match self.kind {
                 TuiSplit::HSplit => {
                     let h_interval = (bottom - top) / (splits as u16);
@@ -71,7 +74,7 @@ impl TuiStructure {
                     String::from(n),
                     BorderKind::Single,
                     (new_left, new_top),
-                    (new_right, new_bottom),
+                    (new_right + xtra, new_bottom),
                 )?,
                 TuiStructureLink::Empty => {}
             }
@@ -118,13 +121,13 @@ impl TuiRect {
                 .collect::<String>()
                 .as_str()
             + " ";
-
-        Self::draw_line(w_repeat, from.0, from.1, tlc, dash, trc)?;
+        let mut std: Stdout = stdout();
+        Self::draw_line(&mut std, w_repeat, from.0, from.1, tlc, dash, trc)?;
         for i in 1..h_repeat {
-            Self::draw_line(w_repeat, from.0, from.1 + i, pipe, " ", pipe)?;
+            Self::draw_line(&mut std, w_repeat, from.0, from.1 + i, pipe, " ", pipe)?;
         }
-        Self::draw_line(w_repeat, from.0, to.1, blc, dash, brc)?;
-        stdout()
+        Self::draw_line(&mut std, w_repeat, from.0, to.1, blc, dash, brc)?;
+        std
             .queue(cursor::MoveTo(from.0 + 1, from.1))?
             .queue(style::PrintStyledContent(tag.attribute(Bold)))?
         // .flush()?
@@ -133,8 +136,8 @@ impl TuiRect {
         Ok(())
     }
 
-    fn draw_line(n: u16, x: u16, y: u16, cs: &str, cm: &str, ce: &str) -> Result<()> {
-        stdout()
+    fn draw_line(std: &mut Stdout, n: u16, x: u16, y: u16, cs: &str, cm: &str, ce: &str) -> Result<()> {
+        std
             .queue(cursor::MoveTo(x, y))?
             .queue(style::Print(cs))?
             .queue(style::Print(cm.repeat((n - 2).max(0) as usize)))?

@@ -1,13 +1,11 @@
-use std::ops::Mul;
-
-enum ADSRState {
+enum AdsrState {
     Pressed,
     Released,
     Off,
 }
 
-pub struct ADSR {
-    state: ADSRState,
+pub struct Adsr {
+    state: AdsrState,
     sample_rate: f32,
     frame: u128,
     attack: f32,
@@ -16,10 +14,10 @@ pub struct ADSR {
     release: f32,
 }
 
-impl ADSR {
+impl Adsr {
     pub fn new(a: f32, d: f32, s: f32, r: f32) -> Self {
         Self {
-            state: ADSRState::Off,
+            state: AdsrState::Off,
             sample_rate: 0.0,
             // Used for frames since pressed, AND frames since released
             frame: 0,
@@ -35,17 +33,17 @@ impl ADSR {
     }
 
     pub fn press(&mut self) {
-        self.state = ADSRState::Pressed;
+        self.state = AdsrState::Pressed;
         self.frame = 0;
     }
 
     pub fn release(&mut self) {
-        self.state = ADSRState::Released;
+        self.state = AdsrState::Released;
         self.frame = 0;
     }
 
     pub fn stop(&mut self) {
-        self.state = ADSRState::Off;
+        self.state = AdsrState::Off;
         self.frame = 0;
     }
 
@@ -55,8 +53,8 @@ impl ADSR {
             self.frame += 1;
         }
         match self.state {
-            ADSRState::Off => 0.0,
-            ADSRState::Pressed => {
+            AdsrState::Off => 0.0,
+            AdsrState::Pressed => {
                 let attack_frames = self.attack * self.sample_rate;
                 let decay_frames = self.decay * self.sample_rate;
                 if cur_frame < attack_frames {
@@ -70,7 +68,7 @@ impl ADSR {
                     self.sustain
                 }
             }
-            ADSRState::Released => {
+            AdsrState::Released => {
                 // Release
                 let release_frames = self.release * self.sample_rate;
                 (1.0 - (cur_frame / release_frames)) * self.sustain

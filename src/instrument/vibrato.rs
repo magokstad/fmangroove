@@ -26,6 +26,11 @@ impl Vibrato {
         self.sample_rate = sample_rate;
     }
 
+    pub fn set_rate_and_depth(&mut self, rate: f32, depth: f32) {
+        self.rate = rate;
+        self.depth = depth;
+    }
+
     pub fn tick(&mut self) -> f32 {
         if !self.is_on {
             return 1.0

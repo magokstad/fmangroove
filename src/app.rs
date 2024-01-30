@@ -1,13 +1,13 @@
-use std::collections::HashMap;
-use std::ops::Add;
-use crate::instrument::oscillator::{Waveform};
+use std::collections::{HashMap, HashSet};
+use crate::instruction_handler::InstructionHandler;
+use crate::instrument::oscillator::{Oscillator, Waveform};
 use crate::instrument::synth::Synth;
 use crate::instrument::Instrument;
 
 pub struct App {
     // FIXME: temporary pubs
     pub instruments: Vec<Box<dyn Instrument>>,
-    pub instructions: HashMap<u128, Vec<Instruction>>,
+    pub instructions: InstructionHandler,
     delay: u16,
     tick: u128,
     playing: bool
@@ -18,10 +18,9 @@ impl App {
         Self {
             instruments: vec![
                 Box::new(Synth::new()),
-                Box::new({
-                    let mut x = Synth::new(); x.apply_instruction(InstructionKind::Waveform(Waveform::Saw)); x
-                })],
-            instructions: HashMap::new(),
+                Box::new(Oscillator::default())
+            ],
+            instructions: InstructionHandler::new(),
             delay: 125,
             tick: 0,
             playing: false,
@@ -70,13 +69,19 @@ impl App {
 
         // TODO: instruction handling here
         // TODO: What if illegal instruction?
-        if let Some(lst) = self.instructions.get(&self.tick) {
-            for instruction in lst {
-                if let Some(instrument) = self.instruments.get_mut(instruction.target as usize) {
-                    instrument.apply_instruction(instruction.kind)
-                }
+        // TODO: maybe give instruments a unique UUID??
+        for i in 0..self.instruments.len() {
+            for instruction in self.instructions.get(i as u128, self.tick) {
+                self.instruments.get_mut(i).unwrap().apply_instruction(instruction);
             }
         }
+        // if let Some(set) = self.instructions.get(&self.tick) {
+        //     for instruction in set {
+        //         if let Some(instrument) = self.instruments.get_mut(instruction.target as usize) {
+        //             instrument.apply_instruction(instruction.kind);
+        //         }
+        //     }
+        // }
         self.tick = self.tick.checked_add(1).unwrap_or(u128::MAX);
 
         // Audio handling
@@ -88,32 +93,5 @@ impl App {
         }
         // TODO: find cleaner way to handle amplitude
         (left / 8.0, right / 8.0)
-    }
-}
-
-
-
-#[derive(Copy, Clone)]
-pub enum Status { On, Off }
-
-#[derive(Copy, Clone)]
-pub enum InstructionKind {
-    Waveform(Waveform),
-    Frequency(f32),
-    // TODO: Notes should probably be something other than just a number
-    Note(u16),
-    SetState(Status),
-    SetVibrato(Status),
-}
-
-#[derive(Copy, Clone)]
-pub struct Instruction {
-    kind: InstructionKind,
-    target: u128
-}
-
-impl Instruction {
-    pub fn new(kind: InstructionKind, target: u128) -> Self {
-       Self { kind, target }
     }
 }
