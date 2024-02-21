@@ -1,6 +1,5 @@
-use std::collections::{HashMap, HashSet};
 use crate::instruction_handler::InstructionHandler;
-use crate::instrument::oscillator::{Oscillator, Waveform};
+use crate::instrument::oscillator::{Oscillator};
 use crate::instrument::synth::Synth;
 use crate::instrument::Instrument;
 
@@ -8,6 +7,7 @@ pub struct App {
     // FIXME: temporary pubs
     pub instruments: Vec<Box<dyn Instrument>>,
     pub instructions: InstructionHandler,
+    sample_rate: f32,
     delay: u16,
     tick: u128,
     playing: bool
@@ -21,11 +21,13 @@ impl App {
                 Box::new(Oscillator::default())
             ],
             instructions: InstructionHandler::new(),
+            sample_rate: 0.0,
             delay: 125,
             tick: 0,
             playing: false,
         }
     }
+
 
     pub fn get_delay(&self) -> u16 {
         self.delay
@@ -44,9 +46,14 @@ impl App {
     }
 
     pub fn set_sample_rates(&mut self, sample_rate: f32) {
+        self.sample_rate = sample_rate;
         self.instruments.iter_mut().for_each(|it| {
             it.set_sample_rate(sample_rate);
         })
+    }
+
+    pub fn get_sample_rate(&mut self) -> f32 {
+        self.sample_rate
     }
 
     pub fn play(&mut self) {
@@ -67,7 +74,7 @@ impl App {
             return (0.0, 0.0);
         }
 
-        // TODO: instruction handling here
+        // Instruction handling
         // TODO: What if illegal instruction?
         // TODO: maybe give instruments a unique UUID??
         for i in 0..self.instruments.len() {
@@ -75,13 +82,6 @@ impl App {
                 self.instruments.get_mut(i).unwrap().apply_instruction(instruction);
             }
         }
-        // if let Some(set) = self.instructions.get(&self.tick) {
-        //     for instruction in set {
-        //         if let Some(instrument) = self.instruments.get_mut(instruction.target as usize) {
-        //             instrument.apply_instruction(instruction.kind);
-        //         }
-        //     }
-        // }
         self.tick = self.tick.checked_add(1).unwrap_or(u128::MAX);
 
         // Audio handling

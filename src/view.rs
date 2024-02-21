@@ -10,6 +10,7 @@ use std::time::Duration;
 use crate::instruction::InstructionKind;
 
 mod tui_elements;
+mod grid_select;
 
 enum LoopStatus {
     Continue,
@@ -85,10 +86,6 @@ impl TuiViewModel {
         self.app.lock().unwrap().reset();
     }
 
-    fn set_target() {
-
-    }
-
     fn add_instruction(&mut self, kind: InstructionKind) -> Result<(), String> {
         if self.target_instrument.is_none() {
             return Err(String::from("No target instrument set"))
@@ -98,31 +95,13 @@ impl TuiViewModel {
         }
         // let inst = Instruction::new(kind, self.target_instrument.unwrap());
         // self.app.lock().unwrap().instructions.asd();
+        self.app.lock().unwrap().instructions.insert(self.target_instrument.unwrap(), self.target_tick.unwrap(), kind);
         Ok(())
     }
 }
 
 pub fn tui(app: Arc<Mutex<App>>) -> std::io::Result<()> {
     let mut viewmodel = TuiViewModel::new(app);
-
-    // FIXME: Testing
-    // viewmodel.add_instruction(0, Instruction::new(InstructionKind::State(Status::On), 0));
-    // viewmodel.add_instruction(0, Instruction::new(InstructionKind::Vibrato(Status::On), 0));
-    // viewmodel.add_instruction(0, Instruction::new(InstructionKind::Waveform(Waveform::Saw), 0));
-    // viewmodel.add_instruction(0, Instruction::new(InstructionKind::Note(40), 0));
-    // viewmodel.add_instruction(20000, Instruction::new(InstructionKind::State(Status::On), 0));
-    // viewmodel.add_instruction(20000, Instruction::new(InstructionKind::Note(42), 0));
-    // viewmodel.add_instruction(40000, Instruction::new(InstructionKind::State(Status::On), 0));
-    // viewmodel.add_instruction(40000, Instruction::new(InstructionKind::Note(44), 0));
-    // viewmodel.add_instruction(200000, Instruction::new(InstructionKind::State(Status::Off), 0));
-    // viewmodel.add_instruction(40000, Instruction::new(InstructionKind::SetVibrato(Status::On), 0));
-    // viewmodel.add_instruction(40000, Instruction::new(InstructionKind::SetState(Status::Off), 0));
-    // viewmodel.add_instruction(80000, Instruction::new(InstructionKind::SetState(Status::On), 0));
-    // viewmodel.add_instruction(80000, Instruction::new(InstructionKind::Frequency(440.0), 0));
-    // viewmodel.add_instruction(80000, Instruction::new(InstructionKind::SetVibrato(Status::On), 0));
-    // viewmodel.add_instruction(80000, Instruction::new(InstructionKind::SetState(Status::Off), 0));
-    // viewmodel.add_instruction(120000, Instruction::new(InstructionKind::Frequency(220.0), 0));
-
 
     startup()?;
     event_loop(viewmodel)?;
@@ -132,7 +111,6 @@ pub fn tui(app: Arc<Mutex<App>>) -> std::io::Result<()> {
 
 fn event_loop(mut viewmodel: TuiViewModel) -> std::io::Result<()> {
     loop {
-        // tiles.draw()?;
         viewmodel.draw()?;
         command_bar(&viewmodel)?;
         stdout().flush()?;
@@ -192,8 +170,8 @@ fn handle_command(viewmodel: &mut TuiViewModel, event: KeyEvent) -> std::io::Res
                 "play" => viewmodel.play(),
                 "pause" | "stop" => viewmodel.pause(),
                 "reset" => viewmodel.reset(),
-                "time" => if let Ok(u) = stuff.get(1).unwrap_or(&"").parse::<u128>() {
-                    viewmodel.target_tick = Some(u);
+                "time" => if let Ok(f) = stuff.get(1).unwrap_or(&"").parse::<f32>() {
+                    viewmodel.target_tick = Some((f * viewmodel.app.lock().unwrap().get_sample_rate()) as u128);
                 },
                 "inst" => if let Ok(u) = stuff.get(1).unwrap_or(&"").parse::<u128>() {
                     viewmodel.target_instrument = Some(u);
