@@ -1,10 +1,10 @@
-use std::sync::{Arc, Mutex};
+use crate::app::App;
 use cpal::{
     traits::{DeviceTrait, HostTrait},
     SizedSample,
 };
 use cpal::{FromSample, Sample};
-use crate::app::App;
+use std::sync::{Arc, Mutex};
 
 pub fn stream_setup_for(app: Arc<Mutex<App>>) -> Result<cpal::Stream, anyhow::Error> {
     let (_host, device, config) = host_device_setup()?;
@@ -44,13 +44,15 @@ pub fn make_stream<T>(
     config: &cpal::StreamConfig,
     app: Arc<Mutex<App>>,
 ) -> Result<cpal::Stream, anyhow::Error>
-    where
-        T: SizedSample + FromSample<f32>,
+where
+    T: SizedSample + FromSample<f32>,
 {
     let num_channels = config.channels as usize;
     let err_fn = |err| eprintln!("Error building output sound stream: {}", err);
 
-    app.lock().unwrap().oscillator.sample_rate = config.sample_rate.0 as f32;
+    app.lock()
+        .unwrap()
+        .set_sample_rates(config.sample_rate.0 as f32);
 
     let stream = device.build_output_stream(
         config,
@@ -64,21 +66,21 @@ pub fn make_stream<T>(
     Ok(stream)
 }
 
-fn process_frame<SampleType>(
-    output: &mut [SampleType],
-    app: Arc<Mutex<App>>,
-    num_channels: usize,
-) where
+fn process_frame<SampleType>(output: &mut [SampleType], app: Arc<Mutex<App>>, num_channels: usize)
+where
     SampleType: Sample + FromSample<f32>,
 {
     for frame in output.chunks_mut(num_channels) {
-        // TODO: find cleaner way to handle amplitude
-        let x = app.lock().unwrap().oscillator.tick() / 2f32;
-        let value: SampleType = SampleType::from_sample(x);
+        let (l,r) = app.lock().unwrap().tick_all();
+        let left: SampleType = SampleType::from_sample(l);
+        let right: SampleType = SampleType::from_sample(r);
 
-        // copy the same value to all channels
-        for sample in frame.iter_mut() {
-            *sample = value;
+        for (index, sample) in frame.iter_mut().enumerate() {
+            match index {
+                0 => *sample = left,
+                1 => *sample = right,
+                _ => {}
+            }
         }
     }
 }

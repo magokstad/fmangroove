@@ -1,82 +1,97 @@
+use crate::instruction_handler::InstructionHandler;
+use crate::instrument::oscillator::{Oscillator};
+use crate::instrument::synth::Synth;
+use crate::instrument::Instrument;
+
 pub struct App {
-    pub oscillator: Oscillator
+    // FIXME: temporary pubs
+    pub instruments: Vec<Box<dyn Instrument>>,
+    pub instructions: InstructionHandler,
+    sample_rate: f32,
+    delay: u16,
+    tick: u128,
+    playing: bool
 }
 
 impl App {
-
-}
-
-pub struct Oscillator {
-    pub sample_rate: f32,
-    pub waveform: Waveform,
-    pub current_sample_index: f32,
-    pub frequency_hz: f32,
-    pub is_on: bool
-}
-
-impl Oscillator {
-    fn advance_sample(&mut self) {
-        self.current_sample_index = (self.current_sample_index + 1.0) % self.sample_rate;
-    }
-
-    pub fn set_waveform(&mut self, waveform: Waveform) {
-        self.waveform = waveform;
-    }
-
-    fn calculate_sine_output_from_freq(&self, freq: f32) -> f32 {
-        let two_pi = 2.0 * std::f32::consts::PI;
-        (self.current_sample_index * freq * two_pi / self.sample_rate).sin()
-    }
-
-    fn is_multiple_of_freq_above_nyquist(&self, multiple: f32) -> bool {
-        self.frequency_hz * multiple > self.sample_rate / 2.0
-    }
-
-    fn sine_wave(&mut self) -> f32 {
-        self.calculate_sine_output_from_freq(self.frequency_hz)
-    }
-
-    fn generative_waveform(&mut self, harmonic_index_increment: i32, gain_exponent: f32) -> f32 {
-        let mut output = 0.0;
-        let mut i = 1;
-        while !self.is_multiple_of_freq_above_nyquist(i as f32) {
-            let gain = 1.0 / (i as f32).powf(gain_exponent);
-            output += gain * self.calculate_sine_output_from_freq(self.frequency_hz * i as f32);
-            i += harmonic_index_increment;
-        }
-        output
-    }
-
-    fn square_wave(&mut self) -> f32 {
-        self.generative_waveform(2, 1.0)
-    }
-
-    fn saw_wave(&mut self) -> f32 {
-        self.generative_waveform(1, 1.0)
-    }
-
-    fn triangle_wave(&mut self) -> f32 {
-        self.generative_waveform(2, 2.0)
-    }
-
-    pub fn tick(&mut self) -> f32 {
-        self.advance_sample();
-        if !self.is_on {
-            return 0f32
-        }
-        match self.waveform {
-            Waveform::Sine => self.sine_wave(),
-            Waveform::Square => self.square_wave(),
-            Waveform::Saw => self.saw_wave(),
-            Waveform::Triangle => self.triangle_wave(),
+    pub fn new() -> Self {
+        Self {
+            instruments: vec![
+                Box::new(Synth::new()),
+                Box::new(Oscillator::default())
+            ],
+            instructions: InstructionHandler::new(),
+            sample_rate: 0.0,
+            delay: 125,
+            tick: 0,
+            playing: false,
         }
     }
-}
 
-#[derive(Copy, Clone)]
-pub enum Waveform {
-    Sine,
-    Square,
-    Saw,
-    Triangle,
+
+    pub fn get_delay(&self) -> u16 {
+        self.delay
+    }
+
+    pub fn set_delay(&mut self, delay: u16) {
+        self.delay = delay;
+    }
+
+    pub fn get_bpm(&self) -> u16 {
+        return 15000 / self.delay;
+    }
+
+    pub fn set_bpm(&mut self, bpm: u16) {
+        self.delay = 15000 / bpm
+    }
+
+    pub fn set_sample_rates(&mut self, sample_rate: f32) {
+        self.sample_rate = sample_rate;
+        self.instruments.iter_mut().for_each(|it| {
+            it.set_sample_rate(sample_rate);
+        })
+    }
+
+    pub fn get_sample_rate(&mut self) -> f32 {
+        self.sample_rate
+    }
+
+    pub fn play(&mut self) {
+        self.playing = true
+    }
+
+    pub fn pause(&mut self) {
+        self.playing = false
+    }
+
+    pub fn reset(&mut self) {
+        self.tick = 0
+    }
+
+    pub fn tick_all(&mut self) -> (f32, f32) {
+        // Temporary pausing
+        if !self.playing {
+            return (0.0, 0.0);
+        }
+
+        // Instruction handling
+        // TODO: What if illegal instruction?
+        // TODO: maybe give instruments a unique UUID??
+        for i in 0..self.instruments.len() {
+            for instruction in self.instructions.get(i as u128, self.tick) {
+                self.instruments.get_mut(i).unwrap().apply_instruction(instruction);
+            }
+        }
+        self.tick = self.tick.checked_add(1).unwrap_or(u128::MAX);
+
+        // Audio handling
+        let (mut left, mut right) = (0.0, 0.0);
+        for inst in self.instruments.iter_mut() {
+            let (l,r) = inst.tick();
+            left += l;
+            right += r;
+        }
+        // TODO: find cleaner way to handle amplitude
+        (left / 8.0, right / 8.0)
+    }
 }

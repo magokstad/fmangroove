@@ -1,173 +1,212 @@
-use std::io::{stdout, Write, Result};
+use crate::app::App;
+use crate::view::tui_elements::TuiSplit;
+use crate::view::tui_elements::{TuiStructure, TuiStructureLink, TuiTiles};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use crossterm::terminal::{self, Clear, ClearType, disable_raw_mode, enable_raw_mode};
+use crossterm::{cursor, QueueableCommand, style};
+use std::io::{stdout, Write};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use crossterm::{ExecutableCommand, cursor, style, Command, QueueableCommand, queue};
-use crossterm::terminal::{Clear, ClearType, self, enable_raw_mode, disable_raw_mode};
-use crossterm::event::{Event, self, KeyCode};
-use crate::app::{App, Waveform};
+use crate::instruction::InstructionKind;
 
-#[derive(Copy, Clone)]
+mod tui_elements;
+mod grid_select;
+
+enum LoopStatus {
+    Continue,
+    Break,
+}
+
+#[derive(Copy, Clone, Eq, PartialEq)]
 enum TuiMode {
     Command,
-    Unfocused
+    Unfocused,
 }
 
 struct TuiViewModel {
     mode: TuiMode,
     app: Arc<Mutex<App>>,
+    tiles: TuiTiles,
+    target_instrument: Option<u128>,
+    target_tick: Option<u128>,
+    cmd_buf: String,
+    status_buf: String,
 }
 
 impl TuiViewModel {
     fn new(app: Arc<Mutex<App>>) -> Self {
-        Self {app, mode: TuiMode::Unfocused}
+        Self {
+            app,
+            mode: TuiMode::Unfocused,
+            tiles: TuiTiles {
+                structure: TuiStructure {
+                    kind: TuiSplit::HSplit,
+                    stuffs: vec![
+                        TuiStructureLink::Element("Testing".to_string()),
+                        TuiStructureLink::Element("Testingsssssss2".to_string()),
+                        TuiStructureLink::Element("Testingsssssss3".to_string()),
+                        TuiStructureLink::Structure(TuiStructure {
+                            kind: TuiSplit::VSplit,
+                            stuffs: vec![
+                                TuiStructureLink::Element("Testing".to_string()),
+                                TuiStructureLink::Element("Testingsssssss2".to_string()),
+                            ]
+                        })
+                    ]
+                }
+            },
+            cmd_buf: String::new(),
+            status_buf: String::new(),
+            target_tick: None,
+            target_instrument: None
+        }
     }
 
     fn change_mode(&mut self, mode: TuiMode) {
         self.mode = mode;
-    }
-
-    fn change_waveform(&self, waveform: Waveform) {
-        self.app.lock().unwrap().oscillator.set_waveform(waveform);
-    }
-}
-
-#[derive(Copy, Clone)]
-enum BorderKind {
-    Single,
-    Double,
-    Heavy,
-}
-impl BorderKind {
-    pub fn get_symbols(&self) -> [&str; 6] {
-        match self {
-            BorderKind::Heavy =>  ["┃", "━", "┏", "┓", "┗", "┛"],
-            BorderKind::Single =>  ["│", "─", "┌", "┐", "└", "┘"],
-            BorderKind::Double =>  ["║", "═", "╔", "╗", "╚", "╝"]
-        }
-    }
-}
-
-struct TuiRect {
-    pub kind: BorderKind,
-    from: (u16, u16),
-    to: (u16, u16),
-}
-impl TuiRect {
-
-    pub fn from_coords(kind: BorderKind, from: (u16, u16), to: (u16, u16)) -> Self {
-        Self {
-            kind,
-            from,
-            to,
+        if mode == TuiMode::Unfocused {
+            self.cmd_buf.clear()
         }
     }
 
-    pub fn from_size(kind: BorderKind, pos: (u16, u16), size: (u16, u16)) -> Self {
-        Self {
-            kind,
-            from: pos,
-            to: (pos.0 + size.0, pos.1 + size.1)
-        }
-    }
-
-    pub fn draw(&self) -> Result<()> {
-        Self::draw_rect(self.kind, self.from, self.to)?;
+    fn draw(&mut self) -> std::io::Result<()> {
+        self.tiles.draw()?;
         Ok(())
     }
 
-    pub fn set_pos(&mut self, pos: (u16, u16)) {
-        let sw = self.to.0 - self.from.0;
-        let sh = self.to.1 - self.from.1;
-        self.from = pos;
-        self.to = (pos.0 + sw, pos.1 + sh);
+    fn play(&mut self) {
+       self.app.lock().unwrap().play();
     }
 
-    pub fn set_size(&mut self, size: (u16, u16)) {
-        self.to.0 = self.from.0 + size.0;
-        self.to.1 = self.from.1 + size.1;
+    fn pause(&mut self) {
+        self.app.lock().unwrap().pause();
     }
 
-    fn draw_rect(kind: BorderKind, from: (u16, u16), to: (u16,u16)) -> Result<()> {
-        let mut stdo = stdout();
-        let (pipe, dash, tlc, trc, blc, brc) = kind.get_symbols().into();
+    fn reset(&mut self) {
+        self.app.lock().unwrap().reset();
+    }
 
-        let w_repeat = from.0.abs_diff(to.0).max(2) - 2;
-        let h_repeat = from.1.abs_diff(to.1).max(2) - 2;
-
-        Self::draw_line(w_repeat, from.0, from.1, tlc, dash, trc)?;
-        for i in 1..= h_repeat {
-            Self::draw_line(w_repeat, from.0, from.1+i, pipe, " ", pipe)?;
+    fn add_instruction(&mut self, kind: InstructionKind) -> Result<(), String> {
+        if self.target_instrument.is_none() {
+            return Err(String::from("No target instrument set"))
         }
-        Self::draw_line(w_repeat, from.0, to.1.max(1)-1, blc, dash, brc)?;
-        stdo.flush()?;
-        Ok(())
-    }
-
-    fn draw_line(n: u16, x: u16, y: u16, cs: &str, cm: &str, ce: &str) -> Result<()> {
-        stdout()
-            .queue(cursor::MoveTo(x, y))?
-            .queue(style::Print(cs))?
-            .queue(style::Print(cm.repeat(n as usize)))?
-            .queue(style::Print(ce))?
-        ;
+        if self.target_tick.is_none() {
+            return Err(String::from("No target tick set"))
+        }
+        // let inst = Instruction::new(kind, self.target_instrument.unwrap());
+        // self.app.lock().unwrap().instructions.asd();
+        self.app.lock().unwrap().instructions.insert(self.target_instrument.unwrap(), self.target_tick.unwrap(), kind);
         Ok(())
     }
 }
 
-pub fn tui(app: Arc<Mutex<App>>) -> Result<()> {
+pub fn tui(app: Arc<Mutex<App>>) -> std::io::Result<()> {
     let mut viewmodel = TuiViewModel::new(app);
 
-    let mut rect = TuiRect::from_size(BorderKind::Double, (5,5), (10, 5));
-    let (mut w, mut h) = terminal::size()?;
     startup()?;
+    event_loop(viewmodel)?;
+    shutdown()?;
+    Ok(())
+}
+
+fn event_loop(mut viewmodel: TuiViewModel) -> std::io::Result<()> {
     loop {
-        rect.set_pos((2,1));
-        rect.set_size((w-4, h-2));
-        rect.draw()?;
-        if event::poll(Duration::from_millis(15))? {
+        viewmodel.draw()?;
+        command_bar(&viewmodel)?;
+        stdout().flush()?;
+        if event::poll(Duration::from_millis(8))? {
             match event::read()? {
-                Event::Resize(wi,he) => {
-                    (w,h) = (wi, he);
-                    stdout().execute(Clear(ClearType::All))?;
+                Event::Resize(_,_) => {
+                    stdout()
+                        .queue(Clear(ClearType::All))?
+                        .queue(Clear(ClearType::Purge))?
+                    ;
                 },
-                Event::Key(event) => match event.code {
-                    KeyCode::Char('q') => break,
-                    KeyCode::Char(':') => viewmodel.change_mode(TuiMode::Command),
-                    KeyCode::Down => viewmodel.change_waveform(Waveform::Square),
-                    KeyCode::Up => viewmodel.change_waveform(Waveform::Sine),
-                    _ => {}
+                Event::Key(event) => match viewmodel.mode {
+                    TuiMode::Unfocused => match event.code {
+                        KeyCode::Char(':') => viewmodel.change_mode(TuiMode::Command),
+                        KeyCode::Char('c') | KeyCode::Char('d') => {
+                            if event.modifiers == KeyModifiers::CONTROL {
+                                break;
+                            }
+                        }
+                        KeyCode::Esc => viewmodel.change_mode(TuiMode::Unfocused),
+                        _ => {}
+                    },
+                    // TODO: this code looks confusing, consider handling breaks another way?
+                    TuiMode::Command => if let LoopStatus::Break = handle_command(&mut viewmodel, event)? { break; }
                 },
                 _ => {}
             }
         }
     }
-    shutdown()?;
     Ok(())
 }
 
-fn startup() -> Result<()> {
-    let (w,h) = terminal::size()?;
-    let out = "Hello world!";
+// TODO: Terrible parser, improve
+fn handle_command(viewmodel: &mut TuiViewModel, event: KeyEvent) -> std::io::Result<LoopStatus> {
+    if let KeyEventKind::Release = event.kind {
+        return Ok(LoopStatus::Continue)
+    }
+    match event.code {
+        KeyCode::Esc => viewmodel.change_mode(TuiMode::Unfocused),
+        KeyCode::Char(c) => {
+            viewmodel.cmd_buf.push(c);
+        }
+        KeyCode::Backspace => {
+            viewmodel.cmd_buf.pop();
+        }
+        KeyCode::Enter => {
+            viewmodel.status_buf.clear();
+            let stuff: Vec<&str> = viewmodel.cmd_buf.split(" ").collect();
+            let command = *stuff.get(0).unwrap_or(&"");
+            match command {
+                "quit" | "q" => return Ok(LoopStatus::Break),
+                "clear" | "cls" => {
+                    stdout()
+                        .queue(Clear(ClearType::All))?
+                        .queue(Clear(ClearType::Purge))?;
+                },
+                "play" => viewmodel.play(),
+                "pause" | "stop" => viewmodel.pause(),
+                "reset" => viewmodel.reset(),
+                "time" => if let Ok(f) = stuff.get(1).unwrap_or(&"").parse::<f32>() {
+                    viewmodel.target_tick = Some((f * viewmodel.app.lock().unwrap().get_sample_rate()) as u128);
+                },
+                "inst" => if let Ok(u) = stuff.get(1).unwrap_or(&"").parse::<u128>() {
+                    viewmodel.target_instrument = Some(u);
+                },
+                _ => match InstructionKind::parse(viewmodel.cmd_buf.clone()) {
+                    Ok(inst) => if let Err(msg) = viewmodel.add_instruction(inst) { viewmodel.status_buf = msg; }
+                    Err(msg) => viewmodel.status_buf = msg
+                }
+            }
+            viewmodel.change_mode(TuiMode::Unfocused)
+        }
+        _ => {}
+    }
+
+    Ok(LoopStatus::Continue)
+}
+
+fn startup() -> std::io::Result<()> {
     enable_raw_mode()?;
     stdout()
         .queue(cursor::Hide)?
         .queue(Clear(ClearType::All))?
-        .queue(cursor::MoveTo(w/2-(out.len()/2) as u16,h/2))?
-        .queue(style::Print(out))?
-        .flush()?
-        ;
+        .flush()?;
     Ok(())
 }
 
-fn shutdown() -> Result<()> {
+fn shutdown() -> std::io::Result<()> {
     disable_raw_mode()?;
     stdout()
         .queue(cursor::Show)?
         .queue(cursor::SetCursorStyle::DefaultUserShape)?
+        .queue(Clear(ClearType::Purge))?
         .queue(Clear(ClearType::All))?
-        .queue(cursor::MoveTo(0,0))?
-        .flush()?
-        ;
+        .queue(cursor::MoveTo(0, 0))?
+        .flush()?;
     Ok(())
 }
 
@@ -176,81 +215,91 @@ fn menu_screen() {
     // let (w,h) = terminal::size().unwrap();
 }
 
-fn home_screen() {
+fn home_screen() {}
 
+fn command_bar(vm: &TuiViewModel) -> std::io::Result<()> {
+    let (w, h) = terminal::size()?;
+    stdout()
+        .queue(cursor::MoveTo(0, h - 1))?
+        .queue(style::Print(" ".repeat(w as usize)))?
+        .queue(cursor::MoveTo(0, h - 1))?
+        .queue(style::Print(if vm.mode == TuiMode::Command { String::from(":") + vm.cmd_buf.as_str() } else { vm.status_buf.clone() }))?
+    ;
+    Ok(())
 }
-
-fn command_bar() {
-
-}
-
-
 
 fn thing() -> [&'static str; 5] {
-    let letter = |c: char| {
-        match c {
-            'f' => [
-                "   ████\n",
-                "  ██   \n",
-                "███████\n",
-                "  ██   \n",
-                "  ██   \n" ],
-            'M' => [
-                " ███  ███ \n",
-                "██  ██  ██\n",
-                "██  ██  ██\n",
-                "██  ██  ██\n",
-                "██  ██  ██\n"],
-            'A' => [
-                " ██████ \n",
-                "██    ██\n",
-                "████████\n",
-                "██    ██\n",
-                "██    ██\n"],
-            'N' => [
-                "███     ██\n",
-                "██ ██   ██\n",
-                "██  ██  ██\n",
-                "██   ██ ██\n",
-                "██     ███\n"],
-            'G' => [
-                " ██████ \n",
-                "██      \n",
-                "██  ████\n",
-                "██    ██\n",
-                " ██████ \n"],
-            'R' => [
-                "███████ \n",
-                "██    ██\n",
-                "███████ \n",
-                "██  ██  \n",
-                "██    ██\n"],
-            'O' => [
-                "████████\n",
-                "██    ██\n",
-                "██    ██\n",
-                "██    ██\n",
-                "████████\n"],
-            'V' => [
-                "██     ██\n",
-                "██     ██\n",
-                " ██   ██ \n",
-                "  ██ ██  \n",
-                "   ███   \n"],
-            'E' => [
-                "███████\n",
-                "██     \n",
-                "███████\n",
-                "██     \n",
-                "███████\n"],
-            _ => [
-                "██    ██\n",
-                "██    ██\n",
-                "██    ██\n",
-                "██    ██\n",
-                "████████\n"]
-
-        }
+    let letter = |c: char| match c {
+        'f' => [
+            "   ████",
+            "  ██   ",
+            "███████",
+            "  ██   ",
+            "  ██   ",
+        ],
+        'M' => [
+            " ███  ███ ",
+            "██  ██  ██",
+            "██  ██  ██",
+            "██  ██  ██",
+            "██  ██  ██",
+        ],
+        'A' => [
+            " ██████ ",
+            "██    ██",
+            "████████",
+            "██    ██",
+            "██    ██",
+        ],
+        'N' => [
+            "███     ██",
+            "██ ██   ██",
+            "██  ██  ██",
+            "██   ██ ██",
+            "██     ███",
+        ],
+        'G' => [
+            " ██████ ",
+            "██      ",
+            "██  ████",
+            "██    ██",
+            " ██████ ",
+        ],
+        'R' => [
+            "███████ ",
+            "██    ██",
+            "███████ ",
+            "██  ██  ",
+            "██    ██",
+        ],
+        'O' => [
+            "████████",
+            "██    ██",
+            "██    ██",
+            "██    ██",
+            "████████",
+        ],
+        'V' => [
+            "██     ██",
+            "██     ██",
+            " ██   ██ ",
+            "  ██ ██  ",
+            "   ███   ",
+        ],
+        'E' => [
+            "███████",
+            "██     ",
+            "███████",
+            "██     ",
+            "███████",
+        ],
+        _ => [
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
     };
     letter('f')
 }
